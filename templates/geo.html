@@ -1,0 +1,31 @@
+<p><button onclick="getLocation()">What buildings are around me?</button></p>
+<div id="demo"></div>
+<script>
+
+function getLocation() {
+  var x = document.getElementById("demo");
+
+  if (!navigator.geolocation) {
+    x.innerHTML = "Bummer! Can't geolocate with this browser.";
+    return;
+  }
+
+  function success(position) {
+    var lat =  position.coords.latitude;
+    var lng =  position.coords.longitude;
+    
+    x.innerHTML = '<a href="http://mdb.jglukasik.com:8000/l?lat=' + lat + '&lng=' + lng + '">Click here!</a>';
+    //x.innerHTML = "Darn! Can't get your location";
+
+  }
+
+  function error() {
+    x.innerHTML = "Darn! Can't get your location";
+  }
+
+  x.innerHTML = "<p>Where are you...</p>";
+  
+  navigator.geolocation.getCurrentPosition(success, error);
+
+}
+</script>
