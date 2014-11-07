@@ -23,17 +23,23 @@ class index:
 
 class location:
     def GET(self, name):
-        data = web.input()
-        lat = data.lat
-        lng = data.lng
-        return sweep(lat, lng)
+        data = web.input(lat="43.078109",lng="-89.415369")
+        return sweep(data.lat, data.lng)
 
 def sweep(lat, lng):
     buildings = query(lat,lng)
 
-    result = ''
+    result = """
+    <html>Here are all the university buildings I can find by you standing 
+    <a href=\"http://maps.google.com/?q=HERE@{0},{1}\">here</a>
+    <table border=\"1\">
+    <tr><td>Name</td><td>Left heading</td><td>Right heading</td></tr>
+    """.format(lat,lng)
+
     for bldg in buildings:
-        result = "{0} {1} \n".format(result, str(bldg))
+        result = result + "<tr><td>{0}</td><td>{1}</td><td>{2}</td></tr>".format(bldg.name, bldg.lh, bldg.rh)
+
+    result = result + "</table></html>"
 
     return result
 
@@ -124,7 +130,7 @@ class Building:
         self.rh = rheading
 
     def __str__(self):
-        return "{0}\t{1}\t{2}".format(self.name, self.lh, self.rh)
+        return "{0}\t{1}\t{2}".format(self.lh, self.rh, self.name)
 
 
  

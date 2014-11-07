@@ -48,5 +48,4 @@ LEFT JOIN (
   GROUP BY s3.name, s3.point, s3.heading
   HAVING s3.heading = MAX(s2.heading)
 ) r
-ON l.name = r.name
-;
+ON l.name = r.name;
