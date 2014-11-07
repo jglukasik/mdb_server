@@ -19,83 +19,114 @@ class index:
         return data
         (lat, lng, head) = string.split(data)
         #return "" + lat + " " +  lng + " " + head
-        return query(lat, lng, head)
+        return query(lat, lng)
 
 class location:
     def GET(self, name):
         data = web.input()
         lat = data.lat
         lng = data.lng
-        return rotation(lat, lng)
+        return sweep(lat, lng)
 
-def rotation(lat, lng):
-    output = ''
-    for heading in range(0,359,20):
-        output = output + str(heading) + ': ' + query(lat, lng, heading) + '\n'
-    return output
+def sweep(lat, lng):
+    buildings = query(lat,lng)
 
-def query(latitude, longitude, heading):
-    
-    offset = 5
-    distance = 100
+    result = ''
+    for bldg in buildings:
+        result = "{0} {1} \n".format(result, str(bldg))
+
+    return result
+
+
+def query(latitude, longitude):
+    distance = 200
 
     conn = psycopg2.connect("dbname=gis")
     cur = conn.cursor()
-
-    # Make a point at our current lat/long
-    position = "ST_MakePoint(%(longitude)s, %(latitude)s)" % {"longitude": longitude, "latitude": latitude}
     
     query = """
-    SELECT name
-    FROM planet_osm_polygon
-    WHERE 
-    -- Find the buildings that share area with our FOV triangle
-    ST_Intersects(way, 
-
-        -- Convert to the projection system used in osm (900913)
+WITH subquery AS (
+  SELECT
+    name,
+    ST_AsText(ST_Transform((ST_DumpPoints(way)).geom, 4326)) AS point,
+    ST_Azimuth(
+      ST_Transform(
+        ST_SetSRID( ST_MakePoint(%(longitude)s, %(latitude)s), 4326), 
+        900913
+      ),
+      (ST_DumpPoints(way)).geom
+    ) AS heading
+    
+  FROM planet_osm_polygon
+  WHERE 
+    (building='university' OR building='yes' OR building='dormitory')
+    AND
+    ST_Intersects(
+      ST_Buffer(
         ST_Transform(
-
-            -- Make a triangle from our position, and two points 'distance' away at angles 'heading' +/- 'offset'
-            ST_MakePolygon(
-                ST_MakeLine(
-                    ARRAY[
-                        ST_SetSRID(%(point)s::geometry, 4326),
-                        ST_Project(%(point)s, %(distance)s, (%(azimuth)s + %(offset)s))::geometry,
-                        ST_Project(%(point)s, %(distance)s, (%(azimuth)s - %(offset)s))::geometry,
-                        ST_SetSRID(%(point)s::geometry, 4326)
-                    ]
-                )
-            )
-        , 900913)
+          ST_SetSRID(ST_MakePoint(%(longitude)s, %(latitude)s), 4326),
+          900913
+        ),
+        %(distance)s -- Circle radius in meters
+      ),
+      way
     )
-    -- Fo now, just get university buildings
-    AND (building='university' OR building='dormitory' OR building='yes')
+  GROUP BY name, way
+)
 
-    -- Return only the building closest to us (needs to be fixed!)
-    ORDER BY ST_Distance(ST_SetSRID(%(point)s::geometry, 900913), way)
-    LIMIT 1;
-    ;
-    """ % {"point": position, "distance": distance, "azimuth": toRad(heading), "offset": toRad(offset)}
+SELECT l.name, l.left_point, l.left_heading, r.right_point, r.right_heading
+FROM (
+  SELECT
+    s1.name,
+    s1.point AS left_point,
+    DEGREES(s1.heading) AS left_heading
+  FROM subquery s1
+    JOIN subquery s2 on (s1.name = s2.name)
+  GROUP BY s1.name, s1.point, s1.heading
+  HAVING s1.heading = MIN(s2.heading)
+) l
+LEFT JOIN (
+  SELECT
+    s3.name,
+    s3.point AS right_point,
+    DEGREES(s3.heading) AS right_heading
+  FROM subquery s3
+    JOIN subquery s2 on (s3.name = s2.name)
+  GROUP BY s3.name, s3.point, s3.heading
+  HAVING s3.heading = MAX(s2.heading)
+) r
+ON l.name = r.name
+;
+    """ % {"distance": distance, "latitude": latitude, "longitude": longitude}
     
     cur.execute(query);
 
-    building = cur.fetchone()
+    buildings = []
+    for row in cur:
+        (name, lp, lh, rp, rh) = row
+        buildings.append(Building(name, lp, lh, rp, rh))
 
     cur.close()
     conn.close()
 
-    if (building != None):
-        building_name = building[0]
-        if (building_name == None):
-            building_name = "Building found with no name!"
-    else:
-        building_name = "No building found!"
-
-    return building_name
+    return buildings
     
 
 def toRad(degree):
     return float(degree) * math.pi / 180
+
+class Building:
+    def __init__(self, name, lpoint, lheading, rpoint, rheading):
+        self.name = name
+        self.lp = lpoint
+        self.lh = lheading
+        self.rp = rpoint
+        self.rh = rheading
+
+    def __str__(self):
+        return "{0}\t{1}\t{2}".format(self.name, self.lh, self.rh)
+
+
  
 if __name__ == "__main__":
     app = web.application(urls, globals())
