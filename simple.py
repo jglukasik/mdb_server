@@ -24,25 +24,7 @@ class index:
 class location:
     def GET(self, name):
         data = web.input(lat="43.078109",lng="-89.415369")
-        return sweep(data.lat, data.lng)
-
-def sweep(lat, lng):
-    buildings = query(lat,lng)
-
-    result = """
-    <html>Here are all the university buildings I can find by you standing 
-    <a href=\"http://maps.google.com/?q=HERE@{0},{1}\">here</a>
-    <table border=\"1\">
-    <tr><td>Name</td><td>Left heading</td><td>Right heading</td></tr>
-    """.format(lat,lng)
-
-    for bldg in buildings:
-        result = result + "<tr><td>{0}</td><td>{1}</td><td>{2}</td></tr>".format(bldg.name, bldg.lh, bldg.rh)
-
-    result = result + "</table></html>"
-
-    return result
-
+        return query(data.lat, data.lng)
 
 def query(latitude, longitude):
     distance = 200
@@ -116,7 +98,6 @@ ON l.name = r.name
     conn.close()
 
     return buildings
-    
 
 def toRad(degree):
     return float(degree) * math.pi / 180
