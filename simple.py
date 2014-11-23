@@ -1,4 +1,6 @@
 import web
+import re
+import time 
 import psycopg2
 import argparse
 import math
@@ -25,7 +27,7 @@ class index:
 class location:
     def GET(self, name):
         #If no data is given, hard code to our special spot on Bascom Hill
-        data = web.input(lat="43.078109",lng="-89.415369")
+        data = web.input(lat="43.075171",lng="-89.402343")
         return query(data.lat, data.lng)
 
 def query(latitude, longitude):
@@ -94,12 +96,22 @@ ON l.name = r.name
     buildings = []
     for row in cur:
         (name, lp, lh, rp, rh) = row
-        buildings.append(Building(name, lp, lh, rp, rh))
+        buildings.append(Building(name, lp, lh, rp, rh).toList())
 
     cur.close()
     conn.close()
 
-    return buildings
+    body = {}
+    body["requestLat"] = latitude
+    body["requestLng"] = longitude
+    body["unixtime"]   = str(time.time())
+    body["buildings"]  = buildings
+
+    response = {}
+    response["response"] = body
+
+    return json.dumps(response)
+
 
 def toRad(degree):
     return float(degree) * math.pi / 180
@@ -107,16 +119,23 @@ def toRad(degree):
 class Building:
     def __init__(self, name, lpoint, lheading, rpoint, rheading):
         self.name = name
-        self.lp = lpoint
-        self.lh = lheading
-        self.rp = rpoint
-        self.rh = rheading
+        self.lh = str(lheading)
+        self.rh = str(rheading)
 
-    def __str__(self):
-        return "{0}\t{1}\t{2}".format(self.lh, self.rh, self.name)
+        lMatch = re.search(r'^POINT\(([-]?\d+\.\d+) ([-]?\d+.\d+)\)$', lpoint).groups()
+        self.lLat = lMatch[1]
+        self.lLng = lMatch[0]
+        
+        rMatch = re.search(r'^POINT\(([-]?\d+\.\d+) ([-]?\d+.\d+)\)$', rpoint).groups()
+        self.rLat = rMatch[1]
+        self.rLng = rMatch[0]
 
 
- 
+    def toList(self):
+      return { "bName": self.name, "lHeading": self.lh, "rHeading": self.rh, \
+          "lLat": self.lLat, "lLng": self.lLng, "rLat": self.rLat, "rLng": self.rLng}
+
+
 if __name__ == "__main__":
     app = web.application(urls, globals())
     app.run()
