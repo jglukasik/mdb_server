@@ -4,7 +4,7 @@ WITH subquery AS (
     ST_AsText(ST_Transform((ST_DumpPoints(way)).geom, 4326)) AS point,
     ST_Azimuth(
       ST_Transform(
-        ST_SetSRID( ST_MakePoint(-89.402945, 43.075608), 4326), 
+        ST_SetSRID( ST_MakePoint(-89.402343, 43.075171), 4326), 
         900913
       ),
       (ST_DumpPoints(way)).geom
@@ -17,10 +17,10 @@ WITH subquery AS (
     ST_Intersects(
       ST_Buffer(
         ST_Transform(
-          ST_SetSRID(ST_MakePoint(-89.402945, 43.075608), 4326),
+          ST_SetSRID(ST_MakePoint(-89.402343, 43.075171), 4326),
           900913
         ),
-        20 -- Circle radius in meters
+        200 -- Circle radius in meters
       ),
       way
     )

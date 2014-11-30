@@ -40,7 +40,8 @@ $BODY$
 LANGUAGE 'plpgsql';
 
 SELECT building_name, MIN(heading), MAX(heading)
-FROM buildingSweep(-89.403465, 43.075343)
+--FROM buildingSweep(-89.403465, 43.075343)
+FROM buildingSweep(-89.402343, 43.075171)
 GROUP BY building_name 
 ORDER BY max;
 
