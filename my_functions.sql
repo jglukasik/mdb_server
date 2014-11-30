@@ -1,35 +1,38 @@
 CREATE OR REPLACE
-FUNCTION moveReferenceHeading(lng double precision, lat double precision) 
---RETURNS table(bName text, lPoint text, lHead double precision, rPoint text, rHead double precision) AS
-RETURNS text AS
+FUNCTION moveReferenceHeading(lng double precision, lat double precision, distance double precision) 
+--RETURNS table(bName text, left_point text, left_heading double precision, right_point text, right_heading double precision) AS
+--RETURNS text AS
+RETURNS setof record AS
 $$
 DECLARE
-  curBuilding record;
-  strresult text;
+  r record;
 BEGIN
-  FOR curBuilding IN SELECT * FROM getBuildings(lng, lat) g LEFT JOIN planet_osm_polygon p ON g.bName = p.name LOOP
+  FOR r IN SELECT * FROM getBuildings(lng, lat, distance) g LEFT JOIN planet_osm_polygon p ON g.bName = p.name LOOP
 IF
   ST_Intersects(
     ST_Transform(
       ST_MakeLine(
         ARRAY[
-          ST_SetSRID(ST_MakePoint(-89.402343, 43.075171)::geometry, 4326),
-          ST_Project(ST_MakePoint(-89.402343, 43.075171), 200, 0)::geometry
+          ST_SetSRID(ST_MakePoint(lng, lat)::geometry, 4326),
+          ST_Project(ST_MakePoint(lng, lat), distance, 0)::geometry
         ]
       )
     , 900913)
-  , curBuilding.way)
+  , r.way)
 THEN
-  strresult := curBuilding.name;
+  r.name = 'THIS ONE NORTH'; 
+  RETURN NEXT (r.name, r.lpoint, r.lhead, r.rpoint, r.rhead);
+ELSE
+  RETURN NEXT (r.name, r.lpoint, r.lhead, r.rpoint, r.rhead);
 END IF;
 END LOOP;
-RETURN strresult;
+RETURN;
 END
 $$
 LANGUAGE 'plpgsql';
 
 CREATE OR REPLACE
-  FUNCTION getBuildings(lng double precision, lat double precision) 
+  FUNCTION getBuildings(lng double precision, lat double precision, distance double precision) 
   RETURNS table(bName text, lPoint text, lHead double precision, rPoint text, rHead double precision) AS
 $$
 BEGIN
@@ -56,7 +59,7 @@ WITH subquery AS (
           ST_SetSRID(ST_MakePoint(lng, lat), 4326),
           900913
         ),
-        200 -- Circle radius in meters
+        distance -- Circle radius in meters
       ),
       way
     )
@@ -90,6 +93,7 @@ $$
 LANGUAGE 'plpgsql';
 
 SELECT *
-FROM moveReferenceHeading(-89.402343, 43.075171);
+FROM moveReferenceHeading(-89.402343, 43.075171, 200) t(bName text, lPoint text, lHead double precision, rPoint text, rHead double precision);
+--FROM getBuildings(-89.402343, 43.075171, 200);
   
  
