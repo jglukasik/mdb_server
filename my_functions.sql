@@ -1,13 +1,12 @@
 CREATE OR REPLACE
-FUNCTION moveReferenceHeading(lng double precision, lat double precision, distance double precision) 
---RETURNS table(bName text, left_point text, left_heading double precision, right_point text, right_heading double precision) AS
---RETURNS text AS
+FUNCTION getBuildingsFixed(lng double precision, lat double precision, distance double precision) 
 RETURNS setof record AS
 $$
 DECLARE
-  r record;
+  myRow record;
+  modified record;
 BEGIN
-  FOR r IN SELECT * FROM getBuildings(lng, lat, distance) g LEFT JOIN planet_osm_polygon p ON g.bName = p.name LOOP
+  FOR myRow IN SELECT * FROM getBuildings(lng, lat, distance) g LEFT JOIN planet_osm_polygon p ON g.bName = p.name LOOP
 IF
   ST_Intersects(
     ST_Transform(
@@ -18,15 +17,65 @@ IF
         ]
       )
     , 900913)
-  , r.way)
+  , myRow.way)
 THEN
-  r.name = 'THIS ONE NORTH'; 
-  RETURN NEXT (r.name, r.lpoint, r.lhead, r.rpoint, r.rhead);
+-- Find the correct left- and right-most points
+    CREATE TEMP TABLE subquery 
+    ON COMMIT DROP
+    AS 
+    SELECT
+      myRow.name,
+      ST_AsText(ST_Transform((ST_DumpPoints(myRow.way)).geom, 4326)) AS point,
+      -- Find the modified heading by taking (head + 180) % 360, to get accurate min/max without the issues occuring near 0
+      mod(cast(degrees(ST_Azimuth(
+        ST_Transform(
+          ST_SetSRID( ST_MakePoint(lng, lat), 4326), 
+          900913
+        ),
+        (ST_DumpPoints(myRow.way)).geom
+      )) as numeric) + 180, 360) AS mod_heading,
+      DEGREES(ST_Azimuth(
+        ST_Transform(
+          ST_SetSRID( ST_MakePoint(-89.402343, 43.075171), 4326), 
+          900913
+        ),
+        (ST_DumpPoints(myRow.way)).geom
+      )) AS heading;
+ 
+  SELECT l.name, l.left_point, l.left_heading, r.right_point, r.right_heading
+  FROM (
+    SELECT
+      s1.name,
+      s1.point AS left_point,
+      s1.heading AS left_heading
+    FROM subquery s1
+      JOIN subquery s2 on (s1.name = s2.name)
+    GROUP BY s1.name, s1.point, s1.heading, s1.mod_heading
+    HAVING s1.mod_heading = MIN(s2.mod_heading)
+  ) l
+  LEFT JOIN (
+    SELECT
+      s3.name,
+      s3.point AS right_point,
+      s3.heading AS right_heading
+    FROM subquery s3
+      JOIN subquery s2 on (s3.name = s2.name)
+    GROUP BY s3.name, s3.point, s3.heading, s3.mod_heading
+    HAVING s3.mod_heading = MAX(s2.mod_heading)
+  ) r
+  ON l.name = r.name
+  INTO modified;
+
+  myRow.lpoint = modified.left_point;
+  myRow.lhead = modified.left_heading;
+  myRow.rpoint = modified.right_point;
+  myRow.rhead = modified.right_heading;
+
+  RETURN NEXT (myRow.name, myRow.lpoint, myRow.lhead, myRow.rpoint, myRow.rhead);
 ELSE
-  RETURN NEXT (r.name, r.lpoint, r.lhead, r.rpoint, r.rhead);
+  RETURN NEXT (myRow.name, myRow.lpoint, myRow.lhead, myRow.rpoint, myRow.rhead);
 END IF;
 END LOOP;
-RETURN;
 END
 $$
 LANGUAGE 'plpgsql';
@@ -93,7 +142,7 @@ $$
 LANGUAGE 'plpgsql';
 
 SELECT *
-FROM moveReferenceHeading(-89.402343, 43.075171, 200) t(bName text, lPoint text, lHead double precision, rPoint text, rHead double precision);
+FROM getBuildingsFixed(-89.402343, 43.075171, 200) t(bName text, lPoint text, lHead double precision, rPoint text, rHead double precision);
 --FROM getBuildings(-89.402343, 43.075171, 200);
   
  
