@@ -1,3 +1,6 @@
+-- This function takes the results from getBuildings, and then corrects the
+-- error found when a building straddles the north heading, as our max/min 
+-- calculations do not accurately return left/right points in that case
 CREATE OR REPLACE
 FUNCTION getBuildingsFixed(lng double precision, lat double precision, distance double precision) 
 RETURNS setof record AS
@@ -80,6 +83,11 @@ END
 $$
 LANGUAGE 'plpgsql';
 
+-- Returns all buildings, along with their left/rightmost points and headings,
+-- that are found within a 'distance' radius of the 'lnt, lat' provided.
+-- Note, this returns incorrect left/rights if the building straddles the 0 
+-- degree north heading. This is corrected in getBuildingsFixed, which performs
+-- another query on top of this fucntion's results
 CREATE OR REPLACE
   FUNCTION getBuildings(lng double precision, lat double precision, distance double precision) 
   RETURNS table(bName text, lPoint text, lHead double precision, rPoint text, rHead double precision) AS
@@ -141,8 +149,74 @@ END
 $$
 LANGUAGE 'plpgsql';
 
-SELECT *
-FROM getBuildingsFixed(-89.402343, 43.075171, 200) t(bName text, lPoint text, lHead double precision, rPoint text, rHead double precision);
---FROM getBuildings(-89.402343, 43.075171, 200);
+-- Does a degree-by-degree sweep, returning the first building seen at each 
+-- degree step.
+CREATE OR REPLACE 
+  FUNCTION buildingSweep(lng double precision, lat double precision, distance double precision) 
+  RETURNS table(building_name text, heading integer) AS
+$BODY$
+BEGIN
+FOR degree_step IN 0..359 LOOP
+  RETURN QUERY 
+    SELECT name, degree_step
+    FROM planet_osm_polygon
+    WHERE
+    
+    ST_Intersects(
+      ST_Transform(
+        ST_MakeLine(
+          ARRAY[
+            ST_SetSRID(ST_MakePoint(lng, lat)::geometry, 4326),
+            ST_Project(ST_MakePoint(lng, lat), distance, radians(degree_step))::geometry
+          ]
+        )
+      , 900913)
+    , way)
+    
+    AND (building='university' OR building='yes' OR building='dormitory')
+
+    -- Quick and dirty, order by distance from the lower left corner of the building to me
+    ORDER BY 
+      ST_Distance(
+        ST_SetSRID(ST_MakePoint(lng, lat)::geometry, 900913),
+        ST_SetSRID(ST_MakePoint(
+          (ST_XMax(ST_Transform(way,4326))+ST_XMin(ST_Transform(way,4326)))/2,
+          (ST_YMax(ST_Transform(way,4326))+ST_YMin(ST_Transform(way,4326)))/2
+          )
+        , 900913)
+      )
+
+      -- Return the closest building for this degree step
+      LIMIT 1;
+
+END LOOP;
+RETURN;
+END
+$BODY$
+LANGUAGE 'plpgsql';
+
+-- This function takes our building query, that returns all buildings with
+-- left/rightmost points in a certain radius, joined with a building sweep, 
+-- which gives first building seen in degree increments. This is a hack to 
+-- return only the buildings that are in the users view.
+
+-- TODO: This is slow, becuase buildingSweep is slow with the LOOP from 1 to 
+--       360. This can be made faster... Make a row of 1-360, find intersects
+--       with all those headings at once, instead of looping?
+CREATE OR REPLACE 
+  FUNCTION buildingsInView(lng double precision, lat double precision, distance double precision) 
+  RETURNS table(bName text, lPoint text, lHead double precision, rPoint text, rHead double precision) AS
+$BODY$
+BEGIN
+  RETURN QUERY
+  SELECT b.bName, b.lpoint, b.lhead, b.rpoint, b.rhead
+  FROM 
+    (SELECT DISTINCT building_name FROM buildingSweep(lng, lat, distance)) s
+  INNER JOIN
+    (SELECT * FROM getBuildingsFixed(lng, lat, distance) t(bName text, lPoint text, lHead double precision, rPoint text, rHead double precision) ) b
+  ON s.building_name = b.bName;
+RETURN;
+END
+$BODY$
+LANGUAGE 'plpgsql';
   
- 
