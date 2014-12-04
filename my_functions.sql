@@ -156,7 +156,10 @@ CREATE OR REPLACE
   RETURNS table(building_name text, heading integer) AS
 $BODY$
 BEGIN
-FOR degree_step IN 0..359 LOOP
+  -- Doing this loop in 5 degree steps greatly improves speed of query, 
+  -- I think the tradeoff is worth it, as this will only miss buildings taking
+  -- up less than 5 degrees of the users field of view
+FOR degree_step IN 0..359 by 5 LOOP
   RETURN QUERY 
     SELECT name, degree_step
     FROM planet_osm_polygon
