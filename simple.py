@@ -13,6 +13,7 @@ We expect people to hit us at /locationService for json.
 '''
 urls = (
     '/', 'index',
+    '/inView', 'inView',
     '/locationService', 'locationService',
     '/l?(.+)', 'location',
 )
@@ -50,10 +51,13 @@ class locationService:
         data = web.input(lat="43.075171",lng="-89.402343")
         return query(data.lat, data.lng)
 
-    def toList(self):
-      return { "bName": self.name, "lHeading": self.lh, "rHeading": self.rh, \
-          "lLat": self.lLat, "lLng": self.lLng, "rLat": self.rLat, "rLng": self.rLng}
-
+class inView:
+    def GET(self):
+        data = web.input(lat="43.075171",lng="-89.402343")
+        return viewQuery(data.lat, data.lng)
+    def POST(self):
+        data = web.input(lat="43.075171",lng="-89.402343")
+        return viewQuery(data.lat, data.lng)
 
 '''
 Our long SQL query for doing math in the database, courtesy of J. Lukasik
@@ -121,6 +125,42 @@ def query(latitude, longitude):
     distance = 200
     # Interpolates parameters for the query.
     query = SQLQUERY % {"distance": distance, "latitude": latitude, "longitude": longitude}
+   
+    # Open connection, initialzie a cursor, and excute the statement. 
+    conn = psycopg2.connect("dbname=gis")
+    cur = conn.cursor()
+    cur.execute(query);
+
+    # Reads each row given back and constructs an array of buildings toList()'s so
+    # as to make JSON parsing very easy.
+    buildings = []
+    for row in cur:
+        (name, lp, lh, rp, rh) = row
+        buildings.append(Building(name, lp, lh, rp, rh).toList())
+
+    # Close the no longer needed DB connection.
+    cur.close()
+    conn.close()
+
+    # We have a container in the response JSON aptly called 'response' which contains the building
+    # array, but also some information about what the caller asked us. This way, glass can know
+    # that his response is X seconds old, or Y distance from his previous call.
+    body = {}
+    body["requestLat"] = float(latitude)
+    body["requestLng"] = float(longitude)
+    body["unixTime"]   = time.time()
+    body["buildings"]  = buildings
+    # Add it all to the container. 
+    response = {}
+    response["response"] = body
+    # Make it into JSON and return.
+    return json.dumps(response)
+
+def viewQuery(latitude, longitude):
+    # Defines a distance that we care about for our query. In meters.
+    distance = 200
+    # Interpolates parameters for the query.
+    query = "SELECT * FROM buildingsInView(cast(%(longitude)s as double precision), cast(%(latitude)s as double precision), cast(%(distance)s as double precision));"% {"distance": distance, "latitude": latitude, "longitude": longitude}
    
     # Open connection, initialzie a cursor, and excute the statement. 
     conn = psycopg2.connect("dbname=gis")

@@ -4,7 +4,7 @@
 CREATE OR REPLACE
 FUNCTION getBuildingsFixed(lng double precision, lat double precision, distance double precision) 
 RETURNS setof record AS
-$$
+$getBuildingsFixed$
 DECLARE
   myRow record;
   modified record;
@@ -80,7 +80,7 @@ ELSE
 END IF;
 END LOOP;
 END
-$$
+$getBuildingsFixed$
 LANGUAGE 'plpgsql';
 
 -- Returns all buildings, along with their left/rightmost points and headings,
@@ -91,7 +91,7 @@ LANGUAGE 'plpgsql';
 CREATE OR REPLACE
   FUNCTION getBuildings(lng double precision, lat double precision, distance double precision) 
   RETURNS table(bName text, lPoint text, lHead double precision, rPoint text, rHead double precision) AS
-$$
+$getBuildings$
 BEGIN
 RETURN QUERY
 WITH subquery AS (
@@ -146,7 +146,7 @@ LEFT JOIN (
 ) r
 ON l.name = r.name;
 END
-$$
+$getBuildings$
 LANGUAGE 'plpgsql';
 
 -- Does a degree-by-degree sweep, returning the first building seen at each 
@@ -154,7 +154,7 @@ LANGUAGE 'plpgsql';
 CREATE OR REPLACE 
   FUNCTION buildingSweep(lng double precision, lat double precision, distance double precision) 
   RETURNS table(building_name text, heading integer) AS
-$BODY$
+$buildingSweep$
 BEGIN
   -- Doing this loop in 5 degree steps greatly improves speed of query, 
   -- I think the tradeoff is worth it, as this will only miss buildings taking
@@ -195,7 +195,7 @@ FOR degree_step IN 0..359 by 5 LOOP
 END LOOP;
 RETURN;
 END
-$BODY$
+$buildingSweep$
 LANGUAGE 'plpgsql';
 
 -- This function takes our building query, that returns all buildings with
@@ -209,7 +209,7 @@ LANGUAGE 'plpgsql';
 CREATE OR REPLACE 
   FUNCTION buildingsInView(lng double precision, lat double precision, distance double precision) 
   RETURNS table(bName text, lPoint text, lHead double precision, rPoint text, rHead double precision) AS
-$BODY$
+$buildingsInView$
 BEGIN
   RETURN QUERY
   SELECT b.bName, b.lpoint, b.lhead, b.rpoint, b.rhead
@@ -220,6 +220,6 @@ BEGIN
   ON s.building_name = b.bName;
 RETURN;
 END
-$BODY$
+$buildingsInView$
 LANGUAGE 'plpgsql';
   
